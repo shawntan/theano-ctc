@@ -106,9 +106,13 @@ bitmap = np.unpackbits(
 	).reshape(characters.shape[0],8,8)
 bitmap = bitmap[:,::-1,:]
 
-chars = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
 mapping = {c:i for i,c in enumerate(chars)}
 
 def imagify(string):
 	return np.hstack(np.array([bitmap[mapping[c]] for c in string])).T[:,::-1]
+
+def indexify(string):
+	return [mapping[c] for c in string]
+
 

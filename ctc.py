@@ -34,5 +34,5 @@ def cost(predict,Y):
 	probs,prev_idx,prev_prev_idx  = path_probs(predict,Y)
 	
 	total_prob = T.sum(probs)
-	return -T.log(total_prob),probs,prev_idx,prev_prev_idx
+	return -T.log(total_prob)
 
