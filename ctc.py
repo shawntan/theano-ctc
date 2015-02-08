@@ -44,8 +44,10 @@ def path_probs(predict,Y):
 		return log_p_next
 
 	L = T.log(predict[:,Y])
+
 	log_f_probs,_ = theano.scan(step, sequences = [L],            outputs_info = [log_first])
 	log_b_probs,_ = theano.scan(step, sequences = [L[::-1,::-1]], outputs_info = [log_first])
+
 	log_probs = log_f_probs + log_b_probs[::-1,::-1]
 	return log_probs,prev_idx,prev_prev_idx
 
@@ -59,5 +61,5 @@ def cost(predict,Y):
 	norm_total_log_prob = T.log(T.sum(norm_probs))
 	
 	log_total_prob = norm_total_log_prob + max_log_prob
-	return log_total_prob
+	return -log_total_prob
 
