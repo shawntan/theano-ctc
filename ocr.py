@@ -34,7 +34,7 @@ if __name__ == "__main__":
     P = Parameters()
     X = T.matrix('X')
     Y = T.ivector('Y')
-    predict = build_model(P,8,256,len(font.chars)+1)
+    predict = build_model(P,8,512,len(font.chars)+1)
 
 
     probs = predict(X)
@@ -72,11 +72,9 @@ if __name__ == "__main__":
     import random
     for _ in xrange(1500):
         random.shuffle(training_examples)
-        for string in training_examples[:100]:
+        for i,string in enumerate(training_examples):
             print acc(font.imagify(string),label_seq(string))
-        update()
-        hinton.plot(test(font.imagify("test"),label_seq("test")).T)
-        hinton.plot(font.imagify("test").T[::-1].astype('float32'))
-
-
-
+            if i % 20 == 0: update()
+            if i % 100 == 0:
+                hinton.plot(test(font.imagify("test"),label_seq("test")).T)
+                hinton.plot(font.imagify("test").T[::-1].astype('float32'))
