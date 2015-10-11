@@ -7,7 +7,6 @@ from theano_toolkit import hinton
 from theano_toolkit import updates
 from theano_toolkit.parameters import Parameters
 
-import ctc1
 import ctc
 import font
 import lstm
@@ -34,19 +33,17 @@ if __name__ == "__main__":
     P = Parameters()
     X = T.matrix('X')
     Y = T.ivector('Y')
+
     predict = build_model(P,8,512,len(font.chars)+1)
 
 
     probs = predict(X)
-    alpha = 0.1
-    smoothed_predict = (1-alpha) * probs + alpha * 1./(len(font.chars)+1)
-    cost = ctc1.cost(smoothed_predict, Y)
+    alpha = 0.5
     params = P.values()
+    cost = ctc.cost(probs, Y) #+ 1e-8 * sum(T.sum(T.sqr(w)) for w in params)
     gradients = T.grad(cost, wrt=params)
     
-    gradient_acc = [ 
-            theano.shared(0 * p.get_value()) for p in params 
-        ]
+    gradient_acc = [ theano.shared(0 * p.get_value()) for p in params ]
     counter = theano.shared(np.float32(0.))
     acc = theano.function(
         inputs=[X, Y],
@@ -57,15 +54,14 @@ if __name__ == "__main__":
     )
     update = theano.function(
             inputs=[],outputs=[],
-            updates = updates.rmsprop(
+            updates = updates.momentum(
                 params,[ g / counter for g in gradient_acc ],
-                learning_rate=1e-5
-            ) + [ (counter,np.float32(0.))]
+            ) + [ (a, np.float32(0) * a) for a in gradient_acc ] + [ (counter,np.float32(0.)) ]
         )
 
     test = theano.function(
          inputs=[X,Y],
-         outputs=probs[:,Y] / T.sum(probs[:,Y],axis=1).dimshuffle(0,'x')
+         outputs=probs[:,Y]
         )
 
     training_examples = [ word.strip() for word in open('dictionary.txt') ]
@@ -76,5 +72,5 @@ if __name__ == "__main__":
             print acc(font.imagify(string),label_seq(string))
             if i % 20 == 0: update()
             if i % 100 == 0:
-                hinton.plot(test(font.imagify("test"),label_seq("test")).T)
+                hinton.plot(test(font.imagify("test"),label_seq("test")).T,max_arr=1.)
                 hinton.plot(font.imagify("test").T[::-1].astype('float32'))

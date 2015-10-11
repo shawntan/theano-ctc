@@ -5,28 +5,62 @@ from theano_toolkit import utils as U
 from theano_toolkit import updates
 from theano.printing import Print
 
-eps = 1e-40
+def update_log_p(base,zeros,i,log_p_curr,log_p_prev):
+    useful = T.min([(i + 1) * 2,log_p_prev.shape[0]])
+    prev_useful = T.min([i * 2,log_p_prev.shape[0]])
+    skip_idxs = T.arange((base.shape[0] - 2)//2) * 2 + 1
 
-def recurrence_relation(size):
-    big_I = T.eye(size+2)
-    return T.eye(size) + big_I[2:,1:-1] + big_I[2:,:-2] * T.cast(T.arange(size) % 2,'float32')
+    common_factor = T.max(log_p_prev)
+    p_prev   = T.exp(log_p_prev[:prev_useful] - common_factor) 
+    p_prev   = T.set_subtensor(base[:prev_useful],p_prev)
+    _p_prev  = T.inc_subtensor(p_prev[1:],p_prev[:-1])
+    __p_prev = T.inc_subtensor(_p_prev[skip_idxs + 2],p_prev[skip_idxs])
+    updated_log_p_prev = T.log(__p_prev[:useful]) + common_factor
 
-def path_probs(predict, Y):
-    P = predict[:,Y]
-    rr = recurrence_relation(Y.shape[0])
-    def step(p_curr,p_prev):
-        result = p_curr * T.dot(p_prev,rr)
-        return result
-    probs,_ = theano.scan(
-            step,
-            sequences = [P],
-            outputs_info = [T.eye(Y.shape[0])[0]]
+    log_p_next = T.inc_subtensor(
+            zeros[:useful],
+            log_p_curr[:useful] + updated_log_p_prev
         )
-    return probs
+    return log_p_next
+
+
+def path_probs(predict, Y, alpha=1e-4):
+    smoothed_predict = (1 - alpha) * predict[:, Y] + alpha * np.float32(1.)/Y.shape[0]
+    L = T.log(smoothed_predict)
+    zeros = T.zeros_like(L[0])
+    base = T.set_subtensor(zeros[:1],np.float32(1))
+    log_first = zeros
+    def step(i,log_f_curr,log_b_curr,log_f_prev,log_b_prev):
+        return update_log_p(base,zeros,i,log_f_curr,log_f_prev),\
+                update_log_p(base,zeros,i,log_b_curr,log_b_prev)
+
+    [log_f_probs,log_b_probs], _ = theano.scan(
+            step,
+            sequences=[T.arange(L.shape[0]),L,L[::-1, ::-1]],
+            outputs_info=[log_first,log_first]
+        )
+
+    log_probs = log_f_probs + log_b_probs[::-1, ::-1] - L
+
+    return log_probs
 
 def cost(predict, Y):
-    forward_probs  = path_probs(predict,Y)
-    backward_probs = path_probs(predict[::-1],Y[::-1])[::-1,::-1]
-    probs = forward_probs * backward_probs / predict[:,Y]
-    total_prob = T.sum(probs)
-    return -T.log(total_prob)
+
+    log_probs = path_probs(predict, Y)
+    common_factor = T.max(log_probs)
+    idxs = 2 * T.arange(predict.shape[0])[::-1].dimshuffle(0,'x') + T.arange(Y.shape[0])
+    relevant_probs = (idxs < (predict.shape[0] * 2)) * (idxs >= Y.shape[0]-2)
+    total_log_prob = T.log(T.sum(T.exp(log_probs - common_factor) * relevant_probs)) + common_factor
+    return -total_log_prob
+
+
+if __name__ == "__main__":
+    import ctc
+    probs = T.nnet.softmax(np.random.randn(20,11).astype(np.float32))
+    labels = theano.shared(np.arange(11,dtype=np.int32))
+
+    print ctc.cost(probs,labels).eval()
+    print cost(probs,labels).eval()
+
+
+
