@@ -74,3 +74,4 @@ if __name__ == "__main__":
             if i % 100 == 0:
                 hinton.plot(test(font.imagify("test"),label_seq("test")).T,max_arr=1.)
                 hinton.plot(font.imagify("test").T[::-1].astype('float32'))
+        P.save('model.pkl')
