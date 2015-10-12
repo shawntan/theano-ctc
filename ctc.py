@@ -5,23 +5,34 @@ from theano_toolkit import utils as U
 from theano_toolkit import updates
 from theano.printing import Print
 
-def update_log_p(base,zeros,i,log_p_curr,log_p_prev):
-    useful = T.min([(i + 1) * 2,log_p_prev.shape[0]])
-    prev_useful = T.min([i * 2,log_p_prev.shape[0]])
-    skip_idxs = T.arange((base.shape[0] - 2)//2) * 2 + 1
+def update_log_p(zeros,active,log_p_curr,log_p_prev):
+    skip_idxs = T.arange((log_p_prev.shape[0] - 3)//2) * 2 + 1
+    active_skip_idxs = skip_idxs[(skip_idxs < active).nonzero()]
+    active_next = T.cast(T.minimum(
+            T.maximum(
+                active + 1,
+                T.max(T.concatenate([active_skip_idxs,[-3]])) + 2 + 1
+            ),
+            log_p_curr.shape[0]
+        ),'int32')
 
-    common_factor = T.max(log_p_prev)
-    p_prev   = T.exp(log_p_prev[:prev_useful] - common_factor) 
-    p_prev   = T.set_subtensor(base[:prev_useful],p_prev)
-    _p_prev  = T.inc_subtensor(p_prev[1:],p_prev[:-1])
-    __p_prev = T.inc_subtensor(_p_prev[skip_idxs + 2],p_prev[skip_idxs])
-    updated_log_p_prev = T.log(__p_prev[:useful]) + common_factor
 
-    log_p_next = T.inc_subtensor(
-            zeros[:useful],
-            log_p_curr[:useful] + updated_log_p_prev
+    common_factor = T.max(log_p_prev[:active])
+    p_prev = T.exp(log_p_prev[:active] - common_factor)
+    _p_prev = zeros[:active_next]
+    # copy over
+    _p_prev = T.set_subtensor(_p_prev[:active],p_prev)
+    # previous transitions
+    _p_prev = T.inc_subtensor(_p_prev[1:],_p_prev[:-1])
+    # skip transitions
+    _p_prev = T.inc_subtensor(_p_prev[active_skip_idxs + 2],p_prev[active_skip_idxs])
+    updated_log_p_prev = T.log(_p_prev) + common_factor
+
+    log_p_next = T.set_subtensor(
+            zeros[:active_next],
+            log_p_curr[:active_next] + updated_log_p_prev
         )
-    return log_p_next
+    return active_next,log_p_next
 
 
 def path_probs(predict, Y, alpha=1e-4):
@@ -30,36 +41,39 @@ def path_probs(predict, Y, alpha=1e-4):
     zeros = T.zeros_like(L[0])
     base = T.set_subtensor(zeros[:1],np.float32(1))
     log_first = zeros
-    def step(i,log_f_curr,log_b_curr,log_f_prev,log_b_prev):
-        return update_log_p(base,zeros,i,log_f_curr,log_f_prev),\
-                update_log_p(base,zeros,i,log_b_curr,log_b_prev)
-
-    [log_f_probs,log_b_probs], _ = theano.scan(
+    def step(log_f_curr, log_b_curr, f_active, log_f_prev, b_active, log_b_prev):
+        f_active_next, log_f_next = update_log_p(zeros,f_active,log_f_curr,log_f_prev)
+        b_active_next, log_b_next = update_log_p(zeros,b_active,log_b_curr,log_b_prev)
+        return f_active_next, log_f_next, b_active_next, log_b_next
+    [f_active,log_f_probs,b_active,log_b_probs], _ = theano.scan(
             step,
-            sequences=[T.arange(L.shape[0]),L,L[::-1, ::-1]],
-            outputs_info=[log_first,log_first]
+            sequences=[
+                L,
+                L[::-1, ::-1]
+            ],
+            outputs_info=[
+                np.int32(1), log_first,
+                np.int32(1), log_first,
+            ]
         )
-
+    idxs = T.arange(L.shape[1]).dimshuffle('x',0)
+    mask = (idxs < f_active.dimshuffle(0,'x')) & (idxs < b_active.dimshuffle(0,'x'))[::-1,::-1]
     log_probs = log_f_probs + log_b_probs[::-1, ::-1] - L
-
-    return log_probs
+    return log_probs,mask
 
 def cost(predict, Y):
-
-    log_probs = path_probs(predict, Y)
+    log_probs,mask = path_probs(predict, Y)
     common_factor = T.max(log_probs)
-    idxs = 2 * T.arange(predict.shape[0])[::-1].dimshuffle(0,'x') + T.arange(Y.shape[0])
-    relevant_probs = (idxs < (predict.shape[0] * 2)) * (idxs >= Y.shape[0]-2)
-    total_log_prob = T.log(T.sum(T.exp(log_probs - common_factor) * relevant_probs)) + common_factor
+    total_log_prob = T.log(T.sum(T.exp(log_probs - common_factor)[mask.nonzero()])) + common_factor
     return -total_log_prob
 
 
 if __name__ == "__main__":
-    import ctc
+    import ctc_old
     probs = T.nnet.softmax(np.random.randn(20,11).astype(np.float32))
     labels = theano.shared(np.arange(11,dtype=np.int32))
 
-    print ctc.cost(probs,labels).eval()
+    print ctc_old.cost(probs,labels).eval()
     print cost(probs,labels).eval()
 
 
