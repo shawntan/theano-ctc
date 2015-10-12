@@ -5,13 +5,12 @@ from theano_toolkit import utils as U
 from theano_toolkit import updates
 from theano.printing import Print
 
-def update_log_p(zeros,active,log_p_curr,log_p_prev):
-    skip_idxs = T.arange((log_p_prev.shape[0] - 3)//2) * 2 + 1
+def update_log_p(skip_idxs,zeros,active,log_p_curr,log_p_prev):
     active_skip_idxs = skip_idxs[(skip_idxs < active).nonzero()]
     active_next = T.cast(T.minimum(
             T.maximum(
                 active + 1,
-                T.max(T.concatenate([active_skip_idxs,[-3]])) + 2 + 1
+                T.max(T.concatenate([active_skip_idxs,[-1]])) + 2 + 1
             ),
             log_p_curr.shape[0]
         ),'int32')
@@ -34,6 +33,12 @@ def update_log_p(zeros,active,log_p_curr,log_p_prev):
         )
     return active_next,log_p_next
 
+def create_skip_idxs(Y):
+    skip_idxs = T.arange((Y.shape[0] - 3)//2) * 2 + 1
+
+    non_repeats = T.neq(Y[skip_idxs],Y[skip_idxs+2])
+    return skip_idxs[non_repeats.nonzero()]
+
 
 def path_probs(predict, Y, alpha=1e-4):
     smoothed_predict = (1 - alpha) * predict[:, Y] + alpha * np.float32(1.)/Y.shape[0]
@@ -41,9 +46,12 @@ def path_probs(predict, Y, alpha=1e-4):
     zeros = T.zeros_like(L[0])
     base = T.set_subtensor(zeros[:1],np.float32(1))
     log_first = zeros
+
+    f_skip_idxs = create_skip_idxs(Y)
+    b_skip_idxs = create_skip_idxs(Y[::-1]) # there should be a shortcut to calculating this
     def step(log_f_curr, log_b_curr, f_active, log_f_prev, b_active, log_b_prev):
-        f_active_next, log_f_next = update_log_p(zeros,f_active,log_f_curr,log_f_prev)
-        b_active_next, log_b_next = update_log_p(zeros,b_active,log_b_curr,log_b_prev)
+        f_active_next, log_f_next = update_log_p(f_skip_idxs,zeros,f_active,log_f_curr,log_f_prev)
+        b_active_next, log_b_next = update_log_p(b_skip_idxs,zeros,b_active,log_b_curr,log_b_prev)
         return f_active_next, log_f_next, b_active_next, log_b_next
     [f_active,log_f_probs,b_active,log_b_probs], _ = theano.scan(
             step,
@@ -71,7 +79,7 @@ def cost(predict, Y):
 if __name__ == "__main__":
     import ctc_old
     probs = T.nnet.softmax(np.random.randn(20,11).astype(np.float32))
-    labels = theano.shared(np.arange(11,dtype=np.int32))
+    labels = theano.shared(np.array([-1,1,-1,2,-1,3,-1,4,-1,5,-1,6,-1,7,-1],dtype=np.int32))
 
     print ctc_old.cost(probs,labels).eval()
     print cost(probs,labels).eval()
