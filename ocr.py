@@ -24,9 +24,7 @@ def build_model(P, input_size, hidden_size, output_size):
 
 def label_seq(string):
     idxs = font.indexify(string)
-    result = np.ones((len(idxs) * 2 + 1,), dtype=np.int32) * -1
-    result[np.arange(len(idxs)) * 2 + 1] = idxs
-    return result
+    return idxs 
 
 
 if __name__ == "__main__":
@@ -42,7 +40,7 @@ if __name__ == "__main__":
     params = P.values()
     cost = ctc.cost(probs, Y) #+ 1e-8 * sum(T.sum(T.sqr(w)) for w in params)
     gradients = T.grad(cost, wrt=params)
-    
+
     gradient_acc = [ theano.shared(0 * p.get_value()) for p in params ]
     counter = theano.shared(np.float32(0.))
     acc = theano.function(
