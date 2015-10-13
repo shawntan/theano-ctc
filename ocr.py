@@ -46,22 +46,22 @@ if __name__ == "__main__":
     gradient_acc = [ theano.shared(0 * p.get_value()) for p in params ]
     counter = theano.shared(np.float32(0.))
     acc = theano.function(
-        inputs=[X, Y],
-        outputs=cost,
-        updates = [
-            (a,a + g) for a,g in zip(gradient_acc,gradients)
-        ] + [(counter,counter + np.float32(1.))]
-    )
+            inputs=[X, Y],
+            outputs=cost,
+            updates = [
+                (a,a + g) for a,g in zip(gradient_acc,gradients)
+            ] + [(counter,counter + np.float32(1.))]
+        )
     update = theano.function(
             inputs=[],outputs=[],
-            updates = updates.momentum(
-                params,[ g / counter for g in gradient_acc ],
-            ) + [ (a, np.float32(0) * a) for a in gradient_acc ] + [ (counter,np.float32(0.)) ]
+            updates = updates.momentum(params,[ g / counter for g in gradient_acc ]) \
+                    + [ (a, np.float32(0) * a) for a in gradient_acc ] \
+                    + [ (counter,np.float32(0.)) ]
         )
 
     test = theano.function(
-         inputs=[X,Y],
-         outputs=probs[:,Y]
+            inputs=[X,Y],
+            outputs=probs[:,Y]
         )
 
     training_examples = [ word.strip() for word in open('dictionary.txt') ]
