@@ -5,8 +5,17 @@ from theano_toolkit import utils as U
 from theano_toolkit import updates
 from theano.printing import Print
 
+def interleave_blanks(Y):
+    Y_ = T.alloc(-1,Y.shape[0] * 2 + 1)
+    Y_ = T.set_subtensor(Y_[T.arange(Y.shape[0])*2 + 1],Y)
+    return Y_
 
-def update_log_p(skip_idxs, zeros, active, log_p_curr, log_p_prev):
+def create_skip_idxs(Y):
+    skip_idxs = T.arange((Y.shape[0] - 3)//2) * 2 + 1
+    non_repeats = T.neq(Y[skip_idxs],Y[skip_idxs+2])
+    return skip_idxs[non_repeats.nonzero()]
+
+def update_log_p(skip_idxs,zeros,active,log_p_curr,log_p_prev):
     active_skip_idxs = skip_idxs[(skip_idxs < active).nonzero()]
     active_next = T.cast(T.minimum(
         T.maximum(
@@ -33,14 +42,6 @@ def update_log_p(skip_idxs, zeros, active, log_p_curr, log_p_prev):
         log_p_curr[:active_next] + updated_log_p_prev
     )
     return active_next, log_p_next
-
-
-def create_skip_idxs(Y):
-    skip_idxs = T.arange((Y.shape[0] - 3) // 2) * 2 + 1
-
-    non_repeats = T.neq(Y[skip_idxs], Y[skip_idxs + 2])
-    return skip_idxs[non_repeats.nonzero()]
-
 
 def path_probs(predict, Y, alpha=1e-4):
     smoothed_predict = (1 - alpha) * \
@@ -79,7 +80,7 @@ def path_probs(predict, Y, alpha=1e-4):
 
 
 def cost(predict, Y):
-    log_probs, mask = path_probs(predict, Y)
+    log_probs,mask = path_probs(predict, interleave_blanks(Y))
     common_factor = T.max(log_probs)
     total_log_prob = T.log(
         T.sum(T.exp(log_probs - common_factor)[mask.nonzero()])) + common_factor
@@ -88,9 +89,12 @@ def cost(predict, Y):
 
 if __name__ == "__main__":
     import ctc_old
-    probs = T.nnet.softmax(np.random.randn(20, 11).astype(np.float32))
-    labels = theano.shared(np.array(
-        [-1, 1, -1, 2, -1, 3, -1, 4, -1, 5, -1, 6, -1, 7, -1], dtype=np.int32))
+    probs = T.nnet.softmax(np.random.randn(20,11).astype(np.float32))
+    labels = theano.shared(np.array([1,2,3,4,5,6,7],dtype=np.int32))
+
+    print ctc_old.cost(probs,interleave_blanks(labels)).eval()
+    print cost(probs,labels).eval()
+
 
     print ctc_old.cost(probs, labels).eval()
     print cost(probs, labels).eval()

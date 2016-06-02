@@ -25,9 +25,7 @@ def build_model(P, input_size, hidden_size, output_size):
 
 def label_seq(string):
     idxs = font.indexify(string)
-    result = np.ones((len(idxs) * 2 + 1,), dtype=np.int32) * -1
-    result[np.arange(len(idxs)) * 2 + 1] = idxs
-    return result
+    return idxs 
 
 
 if __name__ == "__main__":
@@ -63,7 +61,6 @@ if __name__ == "__main__":
         inputs=[X, Y],
         outputs=probs[:, Y]
     )
-
     training_examples = [word.strip() for word in open('dictionary.txt')]
     import random
     for _ in xrange(1500):
@@ -74,5 +71,6 @@ if __name__ == "__main__":
                 update()
             if i % 100 == 0:
                 hinton.plot(test(font.imagify("test"),
-                                 label_seq("test")).T, max_arr=1.)
+                                 label_seq("test")).T, max_val=1.)
                 hinton.plot(font.imagify("test").T[::-1].astype('float32'))
+        P.save('model.pkl')
