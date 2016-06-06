@@ -12,8 +12,96 @@ def interleave_blanks(Y):
 
 def create_skip_idxs(Y):
     skip_idxs = T.arange((Y.shape[0] - 3)//2) * 2 + 1
-    non_repeats = T.neq(Y[skip_idxs],Y[skip_idxs+2])
+#    non_repeats = T.neq(Y[skip_idxs],Y[skip_idxs+2])
     return skip_idxs[non_repeats.nonzero()]
+
+
+if __name__ == "__main__":
+    np.set_printoptions(precision=2)
+    from theano_toolkit.parameters import Parameters
+    P = Parameters()
+    P.W_test = np.random.randn(5,5)
+    def p_space(inputs):
+        def recurrence(p_curr,t,p_prev):
+            t = t + 2
+            idxs = T.arange(p_prev.shape[0])
+
+            # add previous
+            _result = p_prev
+            # add shift of previous
+            _result = T.inc_subtensor(_result[1:],   p_prev[:-1])
+            # add skips of previous
+            _result = T.inc_subtensor(_result[3::2], p_prev[1:-2:2])
+
+            # current
+            _result = _result * p_curr
+
+            #_result = T.set_subtensor(_result[t:],0)
+            return t, _result
+
+        X = T.matrix('X')
+        probs = T.nnet.softmax(T.dot(X,P.W_test))
+        init_probs = T.alloc(np.float32(0),X.shape[1])
+        init_probs = T.set_subtensor(init_probs[0],np.float32(1))
+        forward, _ = theano.scan(
+                fn=recurrence,
+                sequences=[probs],
+                outputs_info=[np.int32(0),init_probs]
+            )
+
+        forward[-1] = T.log(forward[-1])
+        f = theano.function(inputs=[X],outputs=forward)
+        idxs,vals = f(inputs)
+        print idxs
+        print vals
+
+    def log_space(inputs):
+        def recurrence(log_p_curr,t,log_p_prev):
+            idxs = T.arange(log_p_prev.shape[0])
+
+            k = T.max(log_p_prev)
+
+            # previous
+            p_prev = T.exp(log_p_prev - k)
+            p_prev = T.set_subtensor(p_prev[t:],0)
+
+            _result = p_prev
+            # add shift of previous
+            _result = T.inc_subtensor(_result[1:],   p_prev[:-1])
+            # add skips of previous
+            _result = T.inc_subtensor(_result[3::2], p_prev[1:-2:2])
+
+            log_result = T.switch(t > 0, T.log(_result) + k, T.zeros_like(_result))
+            # current
+            _recurrence = log_result + log_p_curr
+            t = t + 2
+            recurrence = T.set_subtensor(_recurrence[t:], np.float32(0))
+            return t, recurrence
+
+        X = T.matrix('X')
+        probs = T.nnet.softmax(T.dot(X,P.W_test))
+        log_init_probs = T.alloc(np.float32(0), X.shape[1])
+#        log_init_probs = T.set_subtensor(log_init_probs[0],np.float32(0))
+        log_forward, _ = theano.scan(
+                fn=recurrence,
+                sequences=[T.log(probs)],
+                outputs_info=[np.int32(0),log_init_probs]
+            )
+#        log_forward[-1] = T.exp(log_forward[-1])
+        f = theano.function(inputs=[X],outputs=log_forward)
+        idxs,vals = f(inputs)
+        print idxs
+        print vals
+        print
+#        print T.log(probs).eval({X:inputs})
+        grads = T.grad(-log_forward[1][-1,-1],wrt=[P.W_test])
+        print grads[0].eval({X:inputs})
+
+
+    inputs =  np.random.randn(10,5).astype(np.float32)
+    p_space(inputs)
+    log_space(inputs)
+
 
 def update_log_p(skip_idxs,zeros,active,log_p_curr,log_p_prev):
     active_skip_idxs = skip_idxs[(skip_idxs < active).nonzero()]
@@ -30,7 +118,7 @@ def update_log_p(skip_idxs,zeros,active,log_p_curr,log_p_prev):
     _p_prev = zeros[:active_next]
     # copy over
     _p_prev = T.set_subtensor(_p_prev[:active], p_prev)
-    # previous transitions
+    # previous transitions.
     _p_prev = T.inc_subtensor(_p_prev[1:], _p_prev[:-1])
     # skip transitions
     _p_prev = T.inc_subtensor(
@@ -87,14 +175,3 @@ def cost(predict, Y):
     return -total_log_prob
 
 
-if __name__ == "__main__":
-    import ctc_old
-    probs = T.nnet.softmax(np.random.randn(20,11).astype(np.float32))
-    labels = theano.shared(np.array([1,2,3,4,5,6,7],dtype=np.int32))
-
-    print ctc_old.cost(probs,interleave_blanks(labels)).eval()
-    print cost(probs,labels).eval()
-
-
-    print ctc_old.cost(probs, labels).eval()
-    print cost(probs, labels).eval()
