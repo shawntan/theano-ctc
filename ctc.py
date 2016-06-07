@@ -5,6 +5,15 @@ from theano_toolkit import utils as U
 from theano_toolkit import updates
 from theano.printing import Print
 
+def recurrence_pass(log_probs):
+    log_init_probs = T.zeros((log_probs.shape[1],log_probs.shape[2]))
+    [_,pass_log_probs], _ = theano.scan(
+            fn=recurrence,
+            sequences=[log_probs],
+            outputs_info=[T.zeros((log_probs.shape[1],)), log_init_probs]
+        )
+    return pass_log_probs
+
 def recurrence(log_p_curr, t, log_p_prev):
     idx = T.arange(log_p_prev.shape[1])
     mask = idx.dimshuffle('x',0) < t.dimshuffle(0,'x')
@@ -30,35 +39,5 @@ def recurrence(log_p_curr, t, log_p_prev):
 
     t = t + 2
     result = _result #T.set_subtensor(_result[:,t:], np.float32(0))
-    non_inf = idx < t
-
-    return t, result, non_inf
-
-
-if __name__ == "__main__":
-    import baseline
-    base = baseline.build_baseline()
-    np.set_printoptions(precision=2)
-    def log_space(inputs):
-        X = T.matrix('X')
-
-        probs = T.nnet.softmax(T.dot(X,baseline.W_test))
-        probs = probs.dimshuffle(0, 'x', 1)
-
-        log_init_probs = T.zeros((probs.shape[1],probs.shape[2]))
-        log_forward, _ = theano.scan(
-                fn=recurrence,
-                sequences=[T.log(probs)],
-                outputs_info=[T.zeros((probs.shape[1],)), log_init_probs, None]
-            )
-        cost = log_forward[1]
-#        grads = T.grad(-cost[0,-1,-1],wrt=[baseline.W_test])
-        f = theano.function(inputs=[X],outputs=[cost,log_forward[2]])
-        return f(inputs)
-
-    inputs = np.random.randn(10,5).astype(np.float32)
-    orig = base(inputs)
-    log_space, non_inf = log_space(inputs)
-    print log_space[:,0,:] - orig
-    print non_inf
+    return t, result
 
