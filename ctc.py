@@ -19,7 +19,7 @@ def recurrence(log_p_curr, t, log_p_prev):
     mask = idx.dimshuffle('x',0) < t.dimshuffle(0,'x')
 
     # normalise and bring back to p space
-    k = T.maximum(T.max(T.switch(mask,log_p_prev,-np.inf), axis=1), 0)
+    k = T.maximum(T.max(T.switch(mask,log_p_prev,-np.inf), axis=1,keepdims=True), 0)
     norm_p_prev = T.exp(log_p_prev - k)
     norm_p_prev = T.switch(mask, norm_p_prev, 0) # set -inf to 0
 

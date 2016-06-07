@@ -39,17 +39,38 @@ def gs_recurrence_pass(log_probs):
     return T.log(pass_probs)
 
 
-
-class CheckRecurrenceCorrectness(unittest.TestCase):
+class CTCTestCase(unittest.TestCase):
     def setUp(self):
-        self.input = T.log(T.nnet.softmax(np.random.randn(10,5).astype(np.float32)))
+        label_length = 5
+        labels = np.empty((label_length * 2 + 1,),dtype=np.int32)
+        labels[1::2] = np.arange(label_length)
+        labels[::2] = -1
 
-    def test_correctness(self):
-        gs_output = gs_recurrence_pass(self.input).eval()
-        ctc_output = ctc.recurrence_pass(self.input.dimshuffle(0,'x',1)).eval()[:,0,:]
+        input_size = 10
+        predict_size = 20
+        P = Parameters()
+        P.W_test = np.zeros((input_size,predict_size))
+        self.W_test = P.W_test
+        self.X = T.matrix('X')
+        probs = T.nnet.softmax(T.dot(self.X,self.W_test))
+        self.log_probs = T.log(probs[:,labels])
+        self.subs = { self.X: np.random.randn(10,10).astype(np.float32) }
+
+
+
+class CheckRecurrenceCorrectness(CTCTestCase):
+    def test_recurrence_correctness(self):
+        gs_output  = gs_recurrence_pass(self.log_probs).eval(self.subs)
+        ctc_output = ctc.recurrence_pass(self.log_probs.dimshuffle(0,'x',1))[:,0,:].eval(self.subs)
         compare_idxs = ~np.isinf(gs_output)
         self.assertTrue(np.allclose(gs_output[compare_idxs],ctc_output[compare_idxs]))
 
+    def test_recurrence_differentiable(self):
+        subs = { self.X: np.random.randn(10,10).astype(np.float32) }
+        ctc_output = ctc.recurrence_pass(self.log_probs.reshape((self.log_probs.shape[0]/2,2,self.log_probs.shape[1])))
+        cost = -T.mean(ctc_output[-1,:,-1])
+        [g] = T.grad(cost,wrt=[self.W_test])
+        self.assertTrue((~np.isnan(g.eval(self.subs))).all())
 
 
 if __name__ == "__main__":
