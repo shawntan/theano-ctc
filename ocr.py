@@ -25,7 +25,7 @@ def build_model(P, input_size, hidden_size, output_size):
 
 def label_seq(string):
     idxs = font.indexify(string)
-    return idxs 
+    return idxs
 
 
 if __name__ == "__main__":
