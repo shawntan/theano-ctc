@@ -64,8 +64,9 @@ class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
 
     def test_recurrence_correctness(self):
         gs_output = gs_recurrence_pass(self.log_probs).eval(self.subs)
-        ctc_output = ctc.recurrence_pass(self.log_probs.dimshuffle(0, 'x', 1))[
-            :, 0, :].eval(self.subs)
+        ctc_output = ctc.recurrence_pass(
+            self.log_probs.dimshuffle(0, 'x', 1)
+        )[:, 0, :].eval(self.subs)
         compare_idxs = ~np.isinf(gs_output)
         self.assertTrue(np.allclose(
             gs_output[compare_idxs], ctc_output[compare_idxs]))
