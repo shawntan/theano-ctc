@@ -58,7 +58,7 @@ class CTCTestCase(unittest.TestCase):
 
 
 
-class CheckRecurrenceCorrectness(CTCTestCase):
+class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
     def test_recurrence_correctness(self):
         gs_output  = gs_recurrence_pass(self.log_probs).eval(self.subs)
         ctc_output = ctc.recurrence_pass(self.log_probs.dimshuffle(0,'x',1))[:,0,:].eval(self.subs)
