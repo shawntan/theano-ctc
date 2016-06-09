@@ -59,6 +59,23 @@ class CTCTestCase(unittest.TestCase):
         self.log_probs = T.log(probs[:, labels])
         self.subs = {self.X: np.random.randn(10, 10).astype(np.float32)}
 
+class CheckLabelsTestCase(CTCTestCase):
+
+    def test_labels(self):
+        batch_labels = np.array([[ 1, 0, 2, 3, 4],
+                                 [ 2, 1, 0, 3,-1],
+                                 [ 1, 2,-1,-1,-1],
+                                 [ 4, 0,-1,-1,-1]],dtype=np.int32)
+
+        blanked_labels = np.array([[-1, 1, -1, 0,-1,  2,-1, 3,-1, 4,-1],
+                                   [-1, 2, -1, 1,-1,  0,-1, 3,-1,-1,-1],
+                                   [-1, 1, -1, 2,-1, -1,-1,-1,-1,-1,-1],
+                                   [-1, 4, -1, 0,-1, -1,-1,-1,-1,-1,-1]],dtype=np.int32)
+        self.assertTrue(
+                (ctc.insert_blanks(batch_labels).eval() == blanked_labels).all())
+
+
+
 
 class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
 
