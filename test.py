@@ -65,6 +65,7 @@ class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
     def test_recurrence_correctness(self):
         gs_output = gs_recurrence_pass(self.log_probs).eval(self.subs)
         ctc_output = ctc.recurrence_pass(
+            T.cast(T.zeros((1,)),'int32'),
             self.log_probs.dimshuffle(0, 'x', 1)
         )[:, 0, :].eval(self.subs)
         compare_idxs = ~np.isinf(gs_output)
@@ -73,12 +74,32 @@ class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
 
     def test_recurrence_differentiable(self):
         subs = {self.X: np.random.randn(10, 10).astype(np.float32)}
-        ctc_output = ctc.recurrence_pass(self.log_probs.reshape(
-            (self.log_probs.shape[0] / 2, 2, self.log_probs.shape[1])))
+        ctc_output = ctc.recurrence_pass(
+            T.cast(T.zeros((2,)),'int32'),
+            self.log_probs.reshape(
+                (self.log_probs.shape[0] / 2, 2, self.log_probs.shape[1])))
         cost = -T.mean(ctc_output[-1, :, -1])
         [g] = T.grad(cost, wrt=[self.W_test])
         self.assertTrue((~np.isnan(g.eval(self.subs))).all())
 
+
+    def test_recurrence_with_offset(self):
+        actual_input = np.random.randn(20, 10).astype(np.float32)
+        subs = { self.X: actual_input }
+        sample_input = self.log_probs.reshape(
+                (self.log_probs.shape[0] / 2, 2, self.log_probs.shape[1]))
+        sample_padding = T.alloc(-np.inf, self.log_probs.shape[0] / 2, 2, 2)
+        sample_input_padded = T.concatenate([ sample_padding, sample_input ],axis=-1)
+        ctc_output = ctc.recurrence_pass(
+            T.cast(2 * T.ones((2,)),'int32'),
+            sample_input_padded
+        )
+        gs_output = gs_recurrence_pass(sample_input[:,0,:])
+        gs_vals = gs_output.eval(subs)
+        ctc_vals = ctc_output.eval(subs)[:,0,2:]
+        compare_idxs = ~np.isinf(gs_vals)
+        self.assertTrue(np.allclose(
+            gs_vals[compare_idxs], ctc_vals[compare_idxs]))
 
 if __name__ == "__main__":
     unittest.main()
