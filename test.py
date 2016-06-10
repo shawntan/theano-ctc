@@ -1,12 +1,7 @@
 import unittest
-
 import theano
 import theano.tensor as T
 import numpy as np
-
-from theano_toolkit import utils as U
-from theano_toolkit import updates
-from theano_toolkit.parameters import Parameters
 import ctc
 
 
