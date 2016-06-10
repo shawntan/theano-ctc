@@ -4,12 +4,23 @@ import numpy as np
 from theano.printing import Print
 
 def insert_blanks(batched_labels):
-    _result = T.alloc(-1,
+    _result = T.alloc(
+            -1,
             batched_labels.shape[0],
-            2 * batched_labels.shape[1] + 1
+            batched_labels.shape[1] * 2 + 1
         )
     _result = T.set_subtensor(_result[:,1:-1:2],batched_labels)
     return _result
+
+def extract_log_probs(log_probs, blanked_labels):
+    batch_size, label_size = blanked_labels.shape
+    sequence_length, batch_size, _ = log_probs.shape
+
+    return log_probs[
+            :,
+            T.arange(batch_size).dimshuffle(0, 'x'),
+            blanked_labels.dimshuffle(0, 1)
+        ]
 
 
 

@@ -60,19 +60,76 @@ class CTCTestCase(unittest.TestCase):
         self.subs = {self.X: np.random.randn(10, 10).astype(np.float32)}
 
 class CheckLabelsTestCase(CTCTestCase):
+    def setUp(self):
+        self.labels = T.as_tensor_variable(np.array([
+            [ 4, 3, 2, 1, 0],
+            [ 3, 2, 1, 0,-1],
+            [ 2, 1, 0,-1,-1],
+            [ 1, 0,-1,-1,-1]
+        ], dtype=np.int32))
+
+        self.log_probs = T.as_tensor_variable(-np.array([
+            [[  0. ,   0.1,   0.2,   0.3,   0.4,   0.5],
+             [ 10. ,  10.1,  10.2,  10.3,  10.4,  10.5],
+             [ 20. ,  20.1,  20.2,  20.3,  20.4,  20.5],
+             [ 30. ,  30.1,  30.2,  30.3,  30.4,  30.5]],
+            [[  1. ,   1.1,   1.2,   1.3,   1.4,   1.5],
+             [ 11. ,  11.1,  11.2,  11.3,  11.4,  11.5],
+             [ 21. ,  21.1,  21.2,  21.3,  21.4,  21.5],
+             [ 31. ,  31.1,  31.2,  31.3,  31.4,  31.5]],
+            [[  2. ,   2.1,   2.2,   2.3,   2.4,   2.5],
+             [ 12. ,  12.1,  12.2,  12.3,  12.4,  12.5],
+             [ 22. ,  22.1,  22.2,  22.3,  22.4,  22.5],
+             [ 32. ,  32.1,  32.2,  32.3,  32.4,  32.5]],
+            [[  3. ,   3.1,   3.2,   3.3,   3.4,   3.5],
+             [ 13. ,  13.1,  13.2,  13.3,  13.4,  13.5],
+             [ 23. ,  23.1,  23.2,  23.3,  23.4,  23.5],
+             [ 33. ,  33.1,  33.2,  33.3,  33.4,  33.5]],
+            [[  4. ,   4.1,   4.2,   4.3,   4.4,   4.5],
+             [ 14. ,  14.1,  14.2,  14.3,  14.4,  14.5],
+             [ 24. ,  24.1,  24.2,  24.3,  24.4,  24.5],
+             [ 34. ,  34.1,  34.2,  34.3,  34.4,  34.5]]], dtype=np.float32))
 
     def test_labels(self):
-        batch_labels = np.array([[ 1, 0, 2, 3, 4],
-                                 [ 2, 1, 0, 3,-1],
-                                 [ 1, 2,-1,-1,-1],
-                                 [ 4, 0,-1,-1,-1]],dtype=np.int32)
+        blanked_labels = np.array([
+            [ -1, 4, -1, 3, -1,  2, -1,  1, -1,  0, -1],
+            [ -1, 3, -1, 2, -1,  1, -1,  0, -1, -1, -1],
+            [ -1, 2, -1, 1, -1,  0, -1, -1, -1, -1, -1],
+            [ -1, 1, -1, 0, -1, -1, -1, -1, -1, -1, -1]
+        ],dtype=np.int32)
 
-        blanked_labels = np.array([[-1, 1, -1, 0,-1,  2,-1, 3,-1, 4,-1],
-                                   [-1, 2, -1, 1,-1,  0,-1, 3,-1,-1,-1],
-                                   [-1, 1, -1, 2,-1, -1,-1,-1,-1,-1,-1],
-                                   [-1, 4, -1, 0,-1, -1,-1,-1,-1,-1,-1]],dtype=np.int32)
         self.assertTrue(
-                (ctc.insert_blanks(batch_labels).eval() == blanked_labels).all())
+                (ctc.insert_blanks(self.labels).eval() == blanked_labels).all())
+
+    def test_extract_labels(self):
+        out = ctc.extract_log_probs(
+                self.log_probs,
+                ctc.insert_blanks(self.labels)
+            ).eval()
+        self.assertTrue(np.allclose(
+            self.log_probs[0,0,self.labels[0,0]].eval(),
+            out[0,0,1]
+        ))
+        self.assertTrue(np.allclose(
+            self.log_probs[0,1,self.labels[1,0]].eval(),
+            out[0,1,1]
+        ))
+        self.assertTrue(np.allclose(
+            self.log_probs[2,1,self.labels[1,0]].eval(),
+            out[2,1,1]
+        ))
+        self.assertTrue(np.allclose(
+            self.log_probs[0,0,self.labels[0,1]].eval(),
+            out[0,0,3]
+        ))
+        self.assertTrue(np.allclose(
+            self.log_probs[0,1,self.labels[1,1]].eval(),
+            out[0,1,3]
+        ))
+        self.assertTrue(np.allclose(
+            self.log_probs[2,1,self.labels[1,1]].eval(),
+            out[2,1,3]
+        ))
 
 
 
