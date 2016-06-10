@@ -9,6 +9,7 @@ from theano_toolkit import updates
 from theano_toolkit.parameters import Parameters
 import ctc
 
+
 def gs_recurrence(p_curr, p_prev):
     # add previous
     _result = p_prev
@@ -32,6 +33,7 @@ def gs_recurrence_pass(log_probs):
     )
     return T.log(pass_probs)
 
+
 def ctc_recurrence_pass(start_idx, log_probs):
     log_init_probs = T.alloc(-np.inf, log_probs.shape[1], log_probs.shape[2])
     log_init_probs = T.set_subtensor(
@@ -44,8 +46,8 @@ def ctc_recurrence_pass(start_idx, log_probs):
     return pass_log_probs
 
 
-
 class CTCTestCase(unittest.TestCase):
+
     def setUp(self):
         self.labels = T.as_tensor_variable(np.array([
             [4, 3, 2, 1, 0],
@@ -55,18 +57,18 @@ class CTCTestCase(unittest.TestCase):
         ], dtype=np.int32))
 
         self.labels_length = T.as_tensor_variable(np.array(
-            [ 5, 4, 3, 2 ], dtype=np.int32
+            [5, 4, 3, 2], dtype=np.int32
         ))
 
         self.data = T.as_tensor_variable(
-            np.random.randn(10,4,5).astype(np.float32)
+            np.random.randn(10, 4, 5).astype(np.float32)
         )
 
         self.transform = theano.shared(
-            np.random.randn(5,6).astype(np.float32)
+            np.random.randn(5, 6).astype(np.float32)
         )
 
-        self.log_probs = ctc.log_softmax(T.dot(self.data,self.transform))
+        self.log_probs = ctc.log_softmax(T.dot(self.data, self.transform))
 
         self.blanked_labels = ctc.insert_blanks(self.labels)
 
@@ -74,7 +76,6 @@ class CTCTestCase(unittest.TestCase):
             self.log_probs,
             self.blanked_labels
         )
-
 
 
 class CheckLabelsTestCase(CTCTestCase):
@@ -151,18 +152,22 @@ class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
 
     def test_recurrence_with_offset(self):
         blanked_labels_length = self.labels_length * 2 + 1
-        label_mask = T.arange(self.blanked_labels.shape[1]).dimshuffle('x',0) <\
-                        blanked_labels_length.dimshuffle(0,'x')
-        reversed_log_probs = T.switch(label_mask, self.extracted_log_probs, -np.inf)[:,:,::-1]
+        label_mask = T.arange(self.blanked_labels.shape[1]).dimshuffle('x', 0) <\
+            blanked_labels_length.dimshuffle(0, 'x')
+        reversed_log_probs = T.switch(
+            label_mask, self.extracted_log_probs, -np.inf)[:, :, ::-1]
         offsets = self.blanked_labels.shape[1] - blanked_labels_length
         ctc_output = ctc_recurrence_pass(offsets, reversed_log_probs).eval()
+
         for i in xrange(4):
+
             off = offsets[i].eval()
-            log_prob = reversed_log_probs[:,i,off:]
+            log_prob = reversed_log_probs[:, i, off:]
             gs_output = gs_recurrence_pass(log_prob).eval()
             compare_idxs = ~np.isinf(gs_output)
+
             self.assertTrue(np.allclose(
-                ctc_output[:,i,off:][compare_idxs],
+                ctc_output[:, i, off:][compare_idxs],
                 gs_output[compare_idxs]
             ))
 

@@ -32,7 +32,6 @@ def extract_log_probs(log_probs, blanked_labels):
     ]
 
 
-
 def recurrence(log_p_curr, log_p_prev):
     # normalise and bring back to p space
     k = T.max(log_p_prev, axis=1, keepdims=True)
