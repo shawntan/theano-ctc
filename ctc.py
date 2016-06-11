@@ -20,6 +20,8 @@ def insert_blanks(batched_labels):
     _result = T.set_subtensor(_result[:, 1:-1:2], batched_labels)
     return _result
 
+def create_skip_mask(batched_labels):
+    return T.neq(batched_labels[:,:-1],batched_labels[:,1:])
 
 def extract_log_probs(log_probs, blanked_labels):
     batch_size, label_size = blanked_labels.shape
@@ -32,7 +34,11 @@ def extract_log_probs(log_probs, blanked_labels):
     ]
 
 
-def recurrence(log_p_curr, log_p_prev):
+def recurrence(log_p_curr, log_p_prev, skip_mask=None):
+    if skip_mask is None:
+        skip_mask = T.ones_like(log_p_curr[:, 1:-2:2])
+
+
     # normalise and bring back to p space
     k = T.max(log_p_prev, axis=1, keepdims=True)
     norm_p_prev = T.switch(
@@ -43,7 +49,8 @@ def recurrence(log_p_curr, log_p_prev):
     # add shift of previous
     _result = T.inc_subtensor(_result[:, 1:],   norm_p_prev[:, :-1])
     # add skips of previous
-    _result = T.inc_subtensor(_result[:, 3::2], norm_p_prev[:, 1:-2:2])
+    _result = T.inc_subtensor(_result[:, 3::2],
+            T.switch(skip_mask,norm_p_prev[:, 1:-2:2],0))
     # current
     # log(p) should be 0 for first 2 terms
     result = T.switch(
@@ -54,18 +61,20 @@ def recurrence(log_p_curr, log_p_prev):
     return result
 
 
-def forward_backward_pass(log_probs, label_mask, frame_mask):
+def forward_backward_pass(log_probs, label_mask, frame_mask, skip_mask=None):
     # log_probs:  time x batch_size x label_size
     # label_mask: batch_size x label_size
     # frame_mask: time x batch_size
+    if skip_mask is None:
+        skip_mask = T.ones_like(log_probs[0, :, 1:-2:2])
 
     time, batch_size, label_size = log_probs.shape
     start_idxs = label_size - T.sum(label_mask, axis=1)
     infs = T.alloc(-np.inf, batch_size, label_size)
 
     def forward_backward(f_mask, b_mask, f_curr, b_curr, f_prev, b_prev):
-        f_next = T.switch(f_mask, recurrence(f_curr, f_prev), infs)
-        b_next = T.switch(b_mask, recurrence(b_curr, b_prev), b_prev)
+        f_next = T.switch(f_mask, recurrence(f_curr, f_prev, skip_mask), infs)
+        b_next = T.switch(b_mask, recurrence(b_curr, b_prev, skip_mask[:,::-1]), b_prev)
         return f_next, b_next
 
     f_init_logp = T.set_subtensor(infs[:, 0], 0)
@@ -84,11 +93,12 @@ def forward_backward_pass(log_probs, label_mask, frame_mask):
     return f_acc + b_acc[::-1, :, ::-1] - log_probs
 
 
-def acc_cost(log_probs, label_mask, frame_mask):
+def acc_cost(log_probs, label_mask, frame_mask, skip_mask=None):
     seq_acc_logp = forward_backward_pass(
         log_probs,
         label_mask,
-        frame_mask
+        frame_mask,
+        skip_mask
     )
     k = T.max(seq_acc_logp, axis=2, keepdims=True)
     log_sum_p = T.log(T.sum(
@@ -111,5 +121,6 @@ def cost(linear_out, frame_lengths, labels, label_lengths):
     return acc_cost(
         extracted_log_probs,
         label_mask,
-        frame_mask
+        frame_mask,
+        create_skip_mask(labels)
     )

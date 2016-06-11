@@ -203,7 +203,7 @@ class CTCForwardBackwardTestCase(CTCTestCase):
             label_lengths=self.labels_length
         )
 
-        [g] = T.grad(T.mean(costs), wrt=[self.transform])
+        g = T.grad(T.mean(costs), wrt=self.transform)
         self.assertTrue((~np.isnan(g.eval())).all())
 
 if __name__ == "__main__":
