@@ -53,26 +53,27 @@ def recurrence(log_p_curr, log_p_prev):
     )
     return result
 
+
 def forward_backward_pass(log_probs, label_mask, frame_mask):
     # log_probs:  time x batch_size x label_size
     # label_mask: batch_size x label_size
     # frame_mask: time x batch_size
 
     time, batch_size, label_size = log_probs.shape
-    start_idxs = label_size - T.sum(label_mask,axis=1)
-    init_infs = T.alloc(-np.inf, batch_size, label_size)
+    start_idxs = label_size - T.sum(label_mask, axis=1)
+    infs = T.alloc(-np.inf, batch_size, label_size)
 
     def forward_backward(f_mask, b_mask, f_curr, b_curr, f_prev, b_prev):
-        f_next = T.switch(f_mask, recurrence(f_curr, f_prev), f_prev)
+        f_next = T.switch(f_mask, recurrence(f_curr, f_prev), infs)
         b_next = T.switch(b_mask, recurrence(b_curr, b_prev), b_prev)
         return f_next, b_next
 
-    f_init_logp = T.set_subtensor(init_infs[:,0], 0)
-    b_init_logp = T.set_subtensor(init_infs[T.arange(batch_size),start_idxs], 0)
+    f_init_logp = T.set_subtensor(infs[:, 0], 0)
+    b_init_logp = T.set_subtensor(infs[T.arange(batch_size), start_idxs], 0)
     f_mask_seq = frame_mask
     b_mask_seq = frame_mask[::-1]
     f_logp_seq = log_probs
-    b_logp_seq = log_probs[::-1,:,::-1]
+    b_logp_seq = log_probs[::-1, :, ::-1]
 
     [f_acc, b_acc], _ = theano.scan(
         fn=forward_backward,
@@ -80,14 +81,22 @@ def forward_backward_pass(log_probs, label_mask, frame_mask):
         outputs_info=[f_init_logp, b_init_logp]
     )
 
-    return f_acc + b_acc[::-1,:,::-1] - log_probs
+    return f_acc + b_acc[::-1, :, ::-1] - log_probs
+
 
 def acc_cost(log_probs, label_mask, frame_mask):
-    seq_acc_logp = forward_backward_pass(log_probs, label_mask, frame_mask)
-    return T.sum(T.switch(T.isinf(seq_acc_logp),
-        0,
-        seq_acc_logp
-    ), axis=(0,2))
+    seq_acc_logp = forward_backward_pass(
+        log_probs,
+        label_mask,
+        frame_mask
+    )
+    k = T.max(seq_acc_logp, axis=2, keepdims=True)
+    log_sum_p = T.log(T.sum(
+        T.switch(T.isinf(seq_acc_logp), 0, T.exp(seq_acc_logp - k)),
+        axis=2
+    )) + k.dimshuffle(0, 1)
+    return T.sum(log_sum_p, axis=0)
+
 
 def cost(linear_out, frame_lengths, labels, label_lengths):
     log_probs = log_softmax(linear_out)
@@ -95,12 +104,12 @@ def cost(linear_out, frame_lengths, labels, label_lengths):
     extracted_log_probs = extract_log_probs(log_probs, blanked_labels)
     blanked_labels_length = label_lengths * 2 + 1
     label_mask = T.arange(blanked_labels.shape[1]).dimshuffle('x', 0) <\
-                blanked_labels_length.dimshuffle(0, 'x')
-    frame_mask = T.arange(linear_out.shape[0]).dimshuffle('x',0) <\
-                frame_lengths.dimshuffle(0, 'x')
+        blanked_labels_length.dimshuffle(0, 'x')
+    frame_mask = T.arange(linear_out.shape[0]).dimshuffle(0, 'x') <\
+        frame_lengths.dimshuffle('x', 0)
+    frame_mask = frame_mask.dimshuffle(0, 1, 'x')
     return acc_cost(
         extracted_log_probs,
         label_mask,
         frame_mask
     )
-

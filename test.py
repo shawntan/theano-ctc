@@ -59,11 +59,15 @@ class CTCTestCase(unittest.TestCase):
             np.random.randn(10, 4, 5).astype(np.float32)
         )
 
+        self.data_length = T.as_tensor_variable(np.array(
+            [10, 10, 10, 10], dtype=np.int32
+        ))
+
         self.transform = theano.shared(
             np.random.randn(5, 6).astype(np.float32)
         )
-
-        self.log_probs = ctc.log_softmax(T.dot(self.data, self.transform))
+        self.lin_output = T.dot(self.data, self.transform)
+        self.log_probs = ctc.log_softmax(self.lin_output)
 
         self.blanked_labels = ctc.insert_blanks(self.labels)
 
@@ -166,7 +170,9 @@ class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
                 gs_output[compare_idxs]
             ))
 
+
 class CTCForwardBackwardTestCase(CTCTestCase):
+
     def test_ctc_backward_forward(self):
         blanked_labels_length = self.labels_length * 2 + 1
         label_mask = T.arange(self.blanked_labels.shape[1]).dimshuffle('x', 0) <\
@@ -181,22 +187,22 @@ class CTCForwardBackwardTestCase(CTCTestCase):
             end = blanked_labels_length[i].eval()
             logp = self.extracted_log_probs[:, i, :end]
             f_pass = gs_recurrence_pass(logp)
-            b_pass = gs_recurrence_pass(logp[::-1,::-1])
-            gs_output = (f_pass + b_pass[::-1,::-1] - logp).eval()
+            b_pass = gs_recurrence_pass(logp[::-1, ::-1])
+            gs_output = (f_pass + b_pass[::-1, ::-1] - logp).eval()
             compare_idxs = ~np.isinf(gs_output)
             self.assertTrue(np.allclose(
-                ctc_output[:,i,:end][compare_idxs],
+                ctc_output[:, i, :end][compare_idxs],
                 gs_output[compare_idxs]
             ))
+
     def test_ctc_differentiable(self):
-        blanked_labels_length = self.labels_length * 2 + 1
-        label_mask = T.arange(self.blanked_labels.shape[1]).dimshuffle('x', 0) <\
-            blanked_labels_length.dimshuffle(0, 'x')
-        frame_mask = T.ones_like(self.extracted_log_probs)
-        costs = ctc.acc_cost(
-            self.extracted_log_probs,
-            label_mask, frame_mask
+        costs = ctc.cost(
+            linear_out=self.lin_output,
+            frame_lengths=self.data_length,
+            labels=self.labels,
+            label_lengths=self.labels_length
         )
+
         [g] = T.grad(T.mean(costs), wrt=[self.transform])
         self.assertTrue((~np.isnan(g.eval())).all())
 
