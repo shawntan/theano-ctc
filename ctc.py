@@ -57,6 +57,7 @@ def forward_backward_pass(log_probs, label_mask, frame_mask):
     # log_probs:  time x batch_size x label_size
     # label_mask: batch_size x label_size
     # frame_mask: time x batch_size
+
     time, batch_size, label_size = log_probs.shape
     start_idxs = label_size - T.sum(label_mask,axis=1)
     init_infs = T.alloc(-np.inf, batch_size, label_size)
@@ -81,6 +82,25 @@ def forward_backward_pass(log_probs, label_mask, frame_mask):
 
     return f_acc + b_acc[::-1,:,::-1] - log_probs
 
+def acc_cost(log_probs, label_mask, frame_mask):
+    seq_acc_logp = forward_backward_pass(log_probs, label_mask, frame_mask)
+    return T.sum(T.switch(T.isinf(seq_acc_logp),
+        0,
+        seq_acc_logp
+    ), axis=(0,2))
 
-
+def cost(linear_out, frame_lengths, labels, label_lengths):
+    log_probs = log_softmax(linear_out)
+    blanked_labels = insert_blanks(labels)
+    extracted_log_probs = extract_log_probs(log_probs, blanked_labels)
+    blanked_labels_length = label_lengths * 2 + 1
+    label_mask = T.arange(blanked_labels.shape[1]).dimshuffle('x', 0) <\
+                blanked_labels_length.dimshuffle(0, 'x')
+    frame_mask = T.arange(linear_out.shape[0]).dimshuffle('x',0) <\
+                frame_lengths.dimshuffle(0, 'x')
+    return acc_cost(
+        extracted_log_probs,
+        label_mask,
+        frame_mask
+    )
 

@@ -188,6 +188,17 @@ class CTCForwardBackwardTestCase(CTCTestCase):
                 ctc_output[:,i,:end][compare_idxs],
                 gs_output[compare_idxs]
             ))
+    def test_ctc_differentiable(self):
+        blanked_labels_length = self.labels_length * 2 + 1
+        label_mask = T.arange(self.blanked_labels.shape[1]).dimshuffle('x', 0) <\
+            blanked_labels_length.dimshuffle(0, 'x')
+        frame_mask = T.ones_like(self.extracted_log_probs)
+        costs = ctc.acc_cost(
+            self.extracted_log_probs,
+            label_mask, frame_mask
+        )
+        [g] = T.grad(T.mean(costs), wrt=[self.transform])
+        self.assertTrue((~np.isnan(g.eval())).all())
 
 if __name__ == "__main__":
     unittest.main()
