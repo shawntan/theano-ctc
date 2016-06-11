@@ -52,3 +52,35 @@ def recurrence(log_p_curr, log_p_prev):
         log_p_curr + T.log(_result) + k
     )
     return result
+
+def forward_backward_pass(log_probs, label_mask, frame_mask):
+    # log_probs:  time x batch_size x label_size
+    # label_mask: batch_size x label_size
+    # frame_mask: time x batch_size
+    time, batch_size, label_size = log_probs.shape
+    start_idxs = label_size - T.sum(label_mask,axis=1)
+    init_infs = T.alloc(-np.inf, batch_size, label_size)
+
+    def forward_backward(f_mask, b_mask, f_curr, b_curr, f_prev, b_prev):
+        f_next = T.switch(f_mask, recurrence(f_curr, f_prev), f_prev)
+        b_next = T.switch(b_mask, recurrence(b_curr, b_prev), b_prev)
+        return f_next, b_next
+
+    f_init_logp = T.set_subtensor(init_infs[:,0], 0)
+    b_init_logp = T.set_subtensor(init_infs[T.arange(batch_size),start_idxs], 0)
+    f_mask_seq = frame_mask
+    b_mask_seq = frame_mask[::-1]
+    f_logp_seq = log_probs
+    b_logp_seq = log_probs[::-1,:,::-1]
+
+    [f_acc, b_acc], _ = theano.scan(
+        fn=forward_backward,
+        sequences=[f_mask_seq, b_mask_seq, f_logp_seq, b_logp_seq],
+        outputs_info=[f_init_logp, b_init_logp]
+    )
+
+    return f_acc + b_acc[::-1,:,::-1] - log_probs
+
+
+
+

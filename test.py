@@ -166,5 +166,28 @@ class CheckRecurrenceCorrectnessTestCase(CTCTestCase):
                 gs_output[compare_idxs]
             ))
 
+class CTCForwardBackwardTestCase(CTCTestCase):
+    def test_ctc_backward_forward(self):
+        blanked_labels_length = self.labels_length * 2 + 1
+        label_mask = T.arange(self.blanked_labels.shape[1]).dimshuffle('x', 0) <\
+            blanked_labels_length.dimshuffle(0, 'x')
+        frame_mask = T.ones_like(self.extracted_log_probs)
+        ctc_output = ctc.forward_backward_pass(
+            self.extracted_log_probs,
+            label_mask, frame_mask
+        ).eval()
+
+        for i in xrange(4):
+            end = blanked_labels_length[i].eval()
+            logp = self.extracted_log_probs[:, i, :end]
+            f_pass = gs_recurrence_pass(logp)
+            b_pass = gs_recurrence_pass(logp[::-1,::-1])
+            gs_output = (f_pass + b_pass[::-1,::-1] - logp).eval()
+            compare_idxs = ~np.isinf(gs_output)
+            self.assertTrue(np.allclose(
+                ctc_output[:,i,:end][compare_idxs],
+                gs_output[compare_idxs]
+            ))
+
 if __name__ == "__main__":
     unittest.main()
